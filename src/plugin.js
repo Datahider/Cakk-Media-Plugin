@@ -96,6 +96,11 @@ function renderPreviewLabel(media) {
   return `Медиа: ${media.name}`;
 }
 
+function openMediaView(media) {
+  const source = `data:${media.mime};base64,${bytesToBase64(media.body)}`;
+  window.open(source, '_blank', 'noopener,noreferrer');
+}
+
 export function createCakkPlugin(hostApi) {
   return {
     id: 'media',
@@ -172,6 +177,19 @@ export function createCakkPlugin(hostApi) {
             target: '_blank',
             rel: 'noreferrer',
           }, media.name);
+        },
+      });
+
+      registry.registerMessageView({
+        id: 'media',
+        priority: 100,
+        canHandle,
+        openView({ bytes }) {
+          const media = parseMedia(bytes);
+          if (!media) {
+            return;
+          }
+          openMediaView(media);
         },
       });
     },
