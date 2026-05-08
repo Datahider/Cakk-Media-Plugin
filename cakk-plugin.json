@@ -2,12 +2,13 @@
   "schema": "cakk-plugin/v1",
   "id": "cakk.media",
   "title": "CAKK Media",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entry": "dist/plugin.js",
   "factory": "createCakkPlugin",
   "capabilities": [
     "attachment",
     "preview",
-    "message-render"
+    "message-render",
+    "message-view"
   ]
 }

@@ -1,6 +1,14 @@
 const MAGIC = 'CAKK:MEDIA:1\n';
 const MAGIC_BYTES = new TextEncoder().encode(MAGIC);
 
+function createEmptyDraftState() {
+  return {
+    file_name: '',
+    content_type: '',
+    bytes: null,
+  };
+}
+
 function createElement(hostApi, type, props, children) {
   if (typeof hostApi?.createElement !== 'function') {
     throw new Error('Host API must provide createElement()');
@@ -101,6 +109,18 @@ function openMediaView(media) {
   window.open(source, '_blank', 'noopener,noreferrer');
 }
 
+function normalizeDraftMedia(draft_state) {
+  if (!(draft_state?.bytes instanceof Uint8Array) || draft_state.bytes.length === 0) {
+    return null;
+  }
+
+  return {
+    bytes: draft_state.bytes,
+    content_type: String(draft_state.content_type || 'application/octet-stream'),
+    file_name: String(draft_state.file_name || 'media'),
+  };
+}
+
 export function createCakkPlugin(hostApi) {
   return {
     id: 'media',
@@ -110,25 +130,68 @@ export function createCakkPlugin(hostApi) {
         id: 'media',
         title: 'Media',
         priority: 100,
-        async createPayload({ pickFiles, readFileAsBytes }) {
-          const files = await pickFiles({
-            accept: 'image/*,video/*',
-            multiple: false,
-          });
-          const file = files[0];
-          if (!file) {
+        createDraftState() {
+          return createEmptyDraftState();
+        },
+        renderDraftEditor({ draftState, setDraftState, disabled, close, pickFiles, readFileAsBytes }) {
+          const selected_name = draftState?.file_name ? draftState.file_name : 'Файл не выбран';
+          const selected_type = draftState?.content_type ? ` (${draftState.content_type})` : '';
+
+          return createElement(hostApi, 'div', { className: 'cakk-media-attachment-editor' }, [
+            createElement(hostApi, 'button', {
+              type: 'button',
+              disabled,
+              onClick: async () => {
+                const files = await pickFiles({
+                  accept: 'image/*,video/*',
+                  multiple: false,
+                });
+                const file = files[0];
+                if (!file) {
+                  return;
+                }
+
+                const bytes = await readFileAsBytes(file);
+                setDraftState({
+                  file_name: String(file.name || 'media'),
+                  content_type: String(file.type || 'application/octet-stream'),
+                  bytes,
+                });
+                close();
+              },
+            }, 'Выбрать файл'),
+            createElement(hostApi, 'div', { className: 'cakk-media-attachment-selection' }, `${selected_name}${selected_type}`),
+            createElement(hostApi, 'button', {
+              type: 'button',
+              disabled,
+              onClick: () => {
+                setDraftState(createEmptyDraftState());
+              },
+            }, 'Очистить'),
+          ]);
+        },
+        async createPayload({ draftState }) {
+          const media = normalizeDraftMedia(draftState);
+          if (!media) {
             return null;
           }
 
-          const body = await readFileAsBytes(file);
-          const header = new TextEncoder().encode(`${MAGIC}${file.type || 'application/octet-stream'}\n${file.name || 'media'}\n\n`);
+          const header = new TextEncoder().encode(`${MAGIC}${media.content_type}\n${media.file_name}\n\n`);
           return {
-            bytes: concatBytes(header, body),
+            bytes: concatBytes(header, media.bytes),
             metaEntries: [
-              { content_type: file.type || 'application/octet-stream' },
-              { file_name: file.name || 'media' },
+              { content_type: media.content_type },
+              { file_name: media.file_name },
             ],
           };
+        },
+        async getPushPreview({ outbound }) {
+          const media = parseMedia(outbound?.bytes);
+          if (!media) {
+            throw new Error('Media payload is invalid');
+          }
+
+          return renderPreviewLabel(media);
         },
       });
 
